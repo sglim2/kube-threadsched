@@ -1,6 +1,6 @@
 module biocomputing/kube-threadsched
 
-go 1.24.1
+go 1.24
 
 require (
 	k8s.io/api v0.32.3
