@@ -13,7 +13,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-const schedulerName = "ratio-scheduler"
+const schedulerName = "threadsched"
 
 func main() {
 	kubeconfig := flag.String("kubeconfig", "", "Absolute path to the kubeconfig file")
