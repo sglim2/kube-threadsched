@@ -10,7 +10,7 @@ metadata:
   name: threadsched-role
 rules:
 - apiGroups: [""]
-  resources: ["pods", "nodes", "bindings"]
+  resources: ["pods", "nodes", "pods/binding"]
   verbs: ["get", "list", "watch", "update", "patch", "create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
