@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: threadsched-sa
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: threadsched-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "nodes", "bindings"]
+  verbs: ["get", "list", "watch", "update", "patch", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: threadsched-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: threadsched-role
+subjects:
+- kind: ServiceAccount
+  name: threadsched-sa
+  namespace: kube-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: threadsched
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: threadsched
+  template:
+    metadata:
+      labels:
+        app: threadsched
+    spec:
+      serviceAccountName: threadsched-sa
+      containers:
+      - name: threadsched
+        image: bigr.bios.cf.ac.uk:4567/sacim/kube-threadsched:253158e3
+        imagePullPolicy: Always
+
