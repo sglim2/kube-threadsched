@@ -29,7 +29,7 @@ func main() {
 		panic(fmt.Sprintf("Error creating Kubernetes client: %v", err))
 	}
 
-	fmt.Println("Starting Ratio Scheduler...")
+	fmt.Println("Starting Thread Ratio Scheduler...")
 
 	for {
 		pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
