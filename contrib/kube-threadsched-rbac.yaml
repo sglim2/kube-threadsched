@@ -44,6 +44,6 @@ spec:
       serviceAccountName: threadsched-sa
       containers:
       - name: threadsched
-        image: bigr.bios.cf.ac.uk:4567/sacim/kube-threadsched:253158e3
+        image: bigr.bios.cf.ac.uk:4567/sacim/kube-threadsched:5fdb9e4f
         imagePullPolicy: Always
 
