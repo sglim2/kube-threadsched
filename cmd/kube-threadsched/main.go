@@ -7,15 +7,24 @@ import (
 	"strconv"
 	"time"
 
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
+	// Kubernetes client libraries necessary to communicate with the cluster. 
+	// these allow us to list, watch, and bind pods and nodes.
+	v1 "k8s.io/api/core/v1" // definitions for core Kubernetes API objects (like Pods, Nodes)
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1" // metadata types for Kubernetes objects
+	"k8s.io/client-go/kubernetes" // client library to interact with the Kubernetes API server
+	"k8s.io/client-go/tools/clientcmd" // Helps build Kubernetes client configuration from kubeconfig files
+)
 )
 
+// The name of our scheduler.
+// This is the name that we will use to identify pods that should be scheduled by our custom scheduler.
+// i.e. the value of the field spec.schedulerName in the PodSpec.
 const schedulerName = "threadsched"
 
 func main() {
+	// Parse the 'kubeconfig' flag to get the path to the kubeconfig file.
+	// This is only necessary if the scheduler is running outside the cluster.
+	// If no '-kubeconfig' flag is provided, the value defaults to an empty string.
 	kubeconfig := flag.String("kubeconfig", "", "Absolute path to the kubeconfig file")
 	flag.Parse()
 
@@ -31,6 +40,7 @@ func main() {
 
 	fmt.Println("Starting Thread Ratio Scheduler...")
 
+	// Start polling
 	for {
 		pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
