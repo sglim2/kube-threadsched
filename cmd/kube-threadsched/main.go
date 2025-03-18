@@ -42,6 +42,7 @@ func main() {
 	fmt.Println("Starting Thread Ratio Scheduler...")
 
 	// Start polling
+	fmt.Printf(time.Now().Format(time.RFC850) + " Polling...\n")
 	for {
 		pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
