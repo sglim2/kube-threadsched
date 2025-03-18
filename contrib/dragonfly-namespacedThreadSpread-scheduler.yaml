@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: threadsched-sa
+  name: dragonfly-namespacedthreadspread-scheduler-sa
   namespace: kube-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: threadsched-role
+  name: dragonfly-namespacedthreadspread-scheduler-role
 rules:
 - apiGroups: [""]
   resources: ["pods", "nodes", "pods/binding"]
@@ -16,34 +16,33 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: threadsched-binding
+  name: dragonfly-namespacedthreadspread-scheduler-binding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: threadsched-role
+  name: dragonfly-namespacedthreadspread-scheduler-role
 subjects:
 - kind: ServiceAccount
-  name: threadsched-sa
+  name: dragonfly-namespacedthreadspread-scheduler-sa
   namespace: kube-system
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: threadsched
+  name: dragonfly-namespacedthreadspread-scheduler
   namespace: kube-system
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: threadsched
+      app: dragonfly-namespacedthreadspread-scheduler
   template:
     metadata:
       labels:
-        app: threadsched
+        app: dragonfly-namespacedthreadspread-scheduler
     spec:
-      serviceAccountName: threadsched-sa
+      serviceAccountName: dragonfly-namespacedthreadspread-scheduler-sa
       containers:
-      - name: threadsched
-        image: bigr.bios.cf.ac.uk:4567/sacim/kube-threadsched:5fdb9e4f
+      - name: dragonfly-namespacedthreadspread-scheduler
+        image: bigr.bios.cf.ac.uk:4567/sacim/kube-threadsched:c1dabd64
         imagePullPolicy: Always
-
