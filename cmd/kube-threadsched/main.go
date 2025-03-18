@@ -246,7 +246,7 @@ func selectNode(clientset *kubernetes.Clientset, pod *v1.Pod) (string, error) {
 		if nodeName == bestNode {
 			marker = " *" // Mark the selected node with an asterisk.
 		}
-	    fmt.Printf("%4s%6s%6d%8s%9s%4s\n",marker, nodeName, info.CPUCapacity, info.AssignedCPULimits, info.AssignedCPURequests, marker)
+	    fmt.Printf("%4s%6s%6d%8d%9d%4s\n",marker, nodeName, info.CPUCapacity, info.AssignedCPULimits, info.AssignedCPURequests, marker)
 	}
 	fmt.Println("-------------------------------------")
 
