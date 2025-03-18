@@ -20,7 +20,7 @@ import (
 // The name of our scheduler.
 // This is the name that we will use to identify pods that should be scheduled by our custom scheduler.
 // i.e. the value of the field spec.schedulerName in the PodSpec.
-const schedulerName = "namespacedThreadSpreadSched"
+const schedulerName = "dragonfly-namespacedThreadSpread-scheduler"
 
 func main() {
 	// Parse the 'kubeconfig' flag to get the path to the kubeconfig file.
