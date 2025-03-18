@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"math"
-	"strconv"
 	"time"
 
 	// Kubernetes client libraries necessary to communicate with the cluster.
@@ -64,7 +63,7 @@ func main() {
 			}
 
 			// log the pod being processed
-			fmt.Printf(time.Now().Format(time.RFC3339) + " [PROCESS] Processing pod/namespace/scheduler %s/%s\n", pod.Name, pod.Namespace, pod.Spec.SchedulerName)
+            fmt.Printf(time.Now().Format(time.RFC3339) + " [PROCESS] Processing pod/namespace/scheduler %s/%s\n", pod.Name, pod.Namespace, pod.Spec.SchedulerName)
 
 			// Select a node for the pod.
 			fmt.Printf("Attempting to schedule pod: %s/%s\n", pod.Namespace, pod.Name)
@@ -238,51 +237,24 @@ func selectNode(clientset *kubernetes.Clientset, pod *v1.Pod) (string, error) {
     	}
 	}
 
+	// Log detailed information about each node.
+	fmt.Printf(time.Now().Format(time.RFC3339) + " [Scheduling Decision] Pod: %s\n", pod.Name)
+	fmt.Printf("%4s%6s%6s%8s%9s%4s"," ", "Node", "CPU", "Limits", "Requests", " ")
+	fmt.Println("-------------------------------------")
+	for nodeName, info := range node_cpu_capacity {
+		marker := ""
+		if nodeName == bestNode {
+			marker = " *" // Mark the selected node with an asterisk.
+		}
+	    fmt.Printf("%4s%6s%6d%8s%9s%4s\n",marker, nodeName, info.CPUCapacity, info.AssignedCPULimits, info.AssignedCPURequests, marker)
+	}
+	fmt.Println("-------------------------------------")
+
 	if bestNode == "" {
     	return "", fmt.Errorf("no suitable node found")
 	}
 
 	return bestNode, nil
-}
-
-func selectNodeBasic(clientset *kubernetes.Clientset) (string, error) {
-	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		return "", err
-	}
-
-	var selectedNode string
-	bestScore := -1
-
-	for _, node := range nodes.Items {
-		threadsStr, ok := node.Labels["threads"]
-		if !ok {
-			continue
-		}
-		totalThreads, err := strconv.Atoi(threadsStr)
-		if err != nil {
-			continue
-		}
-
-		podsOnNode, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{
-			FieldSelector: "spec.nodeName=" + node.Name,
-		})
-		if err != nil {
-			continue
-		}
-		allocated := len(podsOnNode.Items)
-		available := totalThreads - allocated
-
-		if available > bestScore && available > 0 {
-			bestScore = available
-			selectedNode = node.Name
-		}
-	}
-
-	if selectedNode == "" {
-		return "", fmt.Errorf("no node with available threads found")
-	}
-	return selectedNode, nil
 }
 
 func bindPod(clientset *kubernetes.Clientset, pod *v1.Pod, nodeName string) error {
