@@ -45,7 +45,7 @@ func main() {
 	for {
 
 		// timestamp
-	    fmt.Printf(time.Now().Format(time.RFC822Z) + " Polling...\n")
+	    fmt.Printf(time.Now().Format(time.RFC3339) + " [POLLING]\n")
 
 		pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
@@ -59,14 +59,12 @@ func main() {
 		for _, pod := range pods.Items {
 			// Skip pods that are already scheduled or not intended for our scheduler.
 			if pod.Spec.SchedulerName != schedulerName || pod.Spec.NodeName != "" {
-				fmt.Printf(time.Now().Format(time.RFC822Z) + "Skipping pod/namespace/scheduler %s/%s/%s\n", pod.Name, pod.Namespace, pod.Spec.SchedulerName)
+				fmt.Printf(time.Now().Format(time.RFC3339) + " [IGNORE] pod/namespace/scheduler %s/%s/%s\n", pod.Name, pod.Namespace, pod.Spec.SchedulerName)
 				continue
 			}
 
-            // Collect the namespace of the pod
-			// Our scheduler will spread the pods in the same namespace (or more precisely their 
-			//   defined cpu limits) across the nodes in the cluster.
-		    //namespace := pod.Namespace
+			// log the pod being processed
+			fmt.Printf(time.Now().Format(time.RFC3339) + " [PROCESS] Processing pod/namespace/scheduler %s/%s\n", pod.Name, pod.Namespace, pod.Spec.SchedulerName)
 
 			// Select a node for the pod.
 			fmt.Printf("Attempting to schedule pod: %s/%s\n", pod.Namespace, pod.Name)
