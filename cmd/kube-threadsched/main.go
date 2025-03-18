@@ -4,15 +4,17 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
-	// Kubernetes client libraries necessary to communicate with the cluster. 
+	// Kubernetes client libraries necessary to communicate with the cluster.
 	// these allow us to list, watch, and bind pods and nodes.
-	v1 "k8s.io/api/core/v1" // definitions for core Kubernetes API objects (like Pods, Nodes)
+	v1 "k8s.io/api/core/v1"                       // definitions for core Kubernetes API objects (like Pods, Nodes)
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1" // metadata types for Kubernetes objects
-	"k8s.io/client-go/kubernetes" // client library to interact with the Kubernetes API server
-	"k8s.io/client-go/tools/clientcmd" // Helps build Kubernetes client configuration from kubeconfig files
+	"k8s.io/client-go/kubernetes"                 // client library to interact with the Kubernetes API server
+	"k8s.io/client-go/tools/clientcmd"            // Helps build Kubernetes client configuration from kubeconfig files
+	"k8s.io/apimachinery/pkg/api/resource"        // Helps work with Kubernetes resource quantities (helps define default quantities for, e.g. CPU and memory))
 )
 
 // The name of our scheduler.
@@ -80,116 +82,162 @@ func main() {
 }
 
 
+// Given a pod, select a node to schedule the pod to.
+// The node is selected based on the ratio of 
+//
+//     (sum of all pod cpu *limits* on the node, with the same namespace) / (total cpus capacity of that node)
+//
+//  * Only pods living in the same namespace of the target pod are considered in the above calculation.
+//  * The target node must also have enough resources avaiable (based on pods *requests*, and considering all 
+//    workloads in all namespaces). 
+//  * If a node does not have enough resources available, the next best node is considered.
+//
+// Goal:
+//  * Spread the pods in the same namespace (or more precisely their defined cpu limits) across the nodes in the cluster.
+//
+// Use case:
+//  * When many pods in a namespace are expected to be active simultaneously, while workloads in other namespaces 
+//    are expected to be idle.
+//  * When the cluster nodes are not expected to be homegeneous in terms of CPU capacity. (If the nodes are
+//    homogenous, the basic scheduler should be sufficient, in particular with the use of topologySpreadConstraints.)
 func selectNode(clientset *kubernetes.Clientset, pod *v1.Pod) (string, error) {
 
-    //First get the list of pods in the target namespace, and sum the CPU limit
+	// Define a struct to hold node-related information.
+    type NodeInfo struct {
+        CPUCapacity              int64   // total CPU capacity (e.g., from node.Status.Capacity)
+        AssignedCPULimits        int64   // sum of CPU limits for pods in the same namespace
+        AssignedCPULimitsPlus    int64   // sum of CPU limits for pods in the same namespace, plus the new pod
+		AssignedCPURequests	     int64   // sum of CPU requests for pods in the same namespace, will determine if the node has enough resources available
+		AssignedCPURequestsPlus  int64   // sum of CPU requests for pods in the same namespace, plus the new pod
+        ScoreLimits              float64 // calculated score for primary scheduling decisions, based on CPU limits 
+        ScorePods                int64   // calculated score for secondary scheduling decisions, based on number of pods
+    }
+
+    var bestNode string
+	
+	node_cpu_capacity := make(map[string]*NodeInfo)
+
+    // Get the list of pods in the target namespace
     pods_namespaced, err := clientset.CoreV1().Pods(pod.Namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		fmt.Printf("[SelectNode] Error listing pods in Namespace %s: %v\n", pod.Namespce, err)
-		time.Sleep(5 * time.Second)
-		continue
+		fmt.Printf("[SelectNode] Error listing pods in Namespace %s: %v\n", pod.Namespace, err)
+		//time.Sleep(5 * time.Second)
+		//continue
 	}
-
 
 	// get the total nunmber of nodes, and create a map to store the total CPU capacity of each node
 	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		fmt.Printf("[SelectNode] Error listing nodes: %v\n", err)
-		time.Sleep(5 * time.Second)
-		continue
+		//time.Sleep(5 * time.Second)
+		//continue
 	}
 
-	// cycle through the nodes, and calculate the ratio of the total CPU limit of all 
-	// containers of all the pods in the namespace, for that node.
-	node_cpu_capacity := make(map[string]int64)
+	// Cycle through the nodes, populate the map to store the total CPU capacity for each node.
+	// Calculate the ratio of the total CPU limit for all containers of all the pods in the namespace, for that node.
     for _, node := range nodes.Items {
+
+
 		// Obtain the total CPU capacity from the node’s status.
-		cpuCapacityQuantity, err := node.Status.Capacity[v1.ResourceCPU]
-		if err != nil {
-			Printf("[SelectNode] Error getting CPU capacity of node %s: %v\n", node.Name, err)
+		cpuCapacityQuantity, ok := node.Status.Capacity[v1.ResourceCPU]
+		if !ok {
+			fmt.Printf("[SelectNode] Error getting CPU capacity of node %s: %v\n", node.Name, err)
 			// If the node doesn’t report CPU capacity, set to zero 
-			// which will be used to set the node as not suitable
-			cpuCapacityQuantity = 0
-			continue
+			cpuCapacityQuantity = *resource.NewQuantity(0, resource.DecimalSI) 
 		}
 
-		// get the total 
-
-
-
-
-
-    // Calculate the total CPU limit required by the new pod.
-    // (Assumes each container in the pod has a CPU limit defined.)
-    newPodLimit := int64(0) 
-    for _, container := range pod.Spec.Containers {
-        if limit, ok := container.Resources.Limits[v1.ResourceCPU]; ok {
-            newPodLimit += limit.Value()
+		// Initialize the NodeInfo struct for the node.
+        node_cpu_capacity[node.Name] = &NodeInfo{
+			CPUCapacity:             cpuCapacityQuantity.Value(),  // A CPUCapacity of zero means the node is unschedulable.
+    	    AssignedCPULimits:       0,    // This will be updated later.
+    	    AssignedCPULimitsPlus:   0,    // This will be updated later.
+			AssignedCPURequests:     0,    // This will be calculated later.
+			AssignedCPURequestsPlus: 0,    // This will be calculated later.
+        	ScoreLimits:             1e9,  // Start with an arbitrarily high score.
+            ScorePods:               0,    // inititalize
         }
-    }
-    if newPodLimit == 0 {
-        return "", fmt.Errorf("new pod has no CPU limit defined")
-    }
 
-    // List all nodes in the cluster.
-    nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-    if err != nil {
-        return "", err
-    }
+	}
 
-    var selectedNode string
-    // Start with a high "best" ratio so that any valid node will replace it.
-    bestRatio := 1e9 // arbitrarily high number
+	// Cycle through the pods in the namespace, and calculate the sum total CPU limits
+	//   for all containers of all the pods in the namespace, append to each node.
+	for _, pod := range pods_namespaced.Items {
+		// Cycle through the containers in the pod, and sum the CPU limits.
+		for _, container := range pod.Spec.Containers {
+			if limit, ok := container.Resources.Limits[v1.ResourceCPU]; ok {
+				node_cpu_capacity[pod.Spec.NodeName].AssignedCPULimits += limit.Value()
+			}
+			if request, ok := container.Resources.Requests[v1.ResourceCPU]; ok {
+				node_cpu_capacity[pod.Spec.NodeName].AssignedCPURequests += request.Value()
+			}
+		}
+        // get the total number of pods in the namespace for each node 
+		node_cpu_capacity[pod.Spec.NodeName].ScorePods += 1
+	}
 
-    // Iterate through each node.
-    for _, node := range nodes.Items {
-        // Obtain the total CPU capacity from the node’s status.
-        cpuCapacityQuantity, ok := node.Status.Capacity[v1.ResourceCPU]
-        if !ok {
-            // If the node doesn’t report CPU capacity, skip it.
-            continue
-        }
-        totalCores := cpuCapacityQuantity.Value() // e.g. 128 or 192
 
-        // Sum the CPU limits of all pods currently scheduled on this node.
-        allocated := int64(0)
-        podsOnNode, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{
-            FieldSelector: "spec.nodeName=" + node.Name,
-        })
-        if err != nil {
-            // If there’s an error listing pods for this node, skip it.
-            continue
-        }
-        for _, p := range podsOnNode.Items {
-            for _, container := range p.Spec.Containers {
-                if limit, ok := container.Resources.Limits[v1.ResourceCPU]; ok {
-                    allocated += limit.Value()
-                }
-            }
-        }
+	// Add the CPU limit of the new pod to the map
+	for _, node := range nodes.Items {
+		node_cpu_capacity[pod.Spec.NodeName].AssignedCPULimitsPlus = node_cpu_capacity[pod.Spec.NodeName].AssignedCPULimits
+		for _, container := range pod.Spec.Containers {
+			if limit, ok := container.Resources.Limits[v1.ResourceCPU]; ok {
+	 			node_cpu_capacity[node.Name].AssignedCPULimitsPlus += limit.Value()
+			}
+		}
+		node_cpu_capacity[pod.Spec.NodeName].AssignedCPURequestsPlus = node_cpu_capacity[pod.Spec.NodeName].AssignedCPURequests
+        for _, container := range pod.Spec.Containers {
+			if request, ok := container.Resources.Requests[v1.ResourceCPU]; ok {
+	 			node_cpu_capacity[node.Name].AssignedCPURequestsPlus += request.Value()
+			}
+		}
+	}
+
+	// Calculate the score for each Node
+	for _, node := range nodes.Items {
 
         // Check if the node can accommodate the new pod.
-        if allocated+newPodLimit > totalCores {
-            continue // not enough capacity, skip this node
+        if node_cpu_capacity[node.Name].AssignedCPURequestsPlus > node_cpu_capacity[node.Name].CPUCapacity {
+			node_cpu_capacity[node.Name].CPUCapacity = 0  // not enough capacity, assign as 'Unschedulable'
+			continue 
         }
 
-        // Compute the ratio after scheduling the new pod.
-        ratio := float64(allocated+newPodLimit) / float64(totalCores)
-        // Choose the node with the lowest ratio (i.e. most spare capacity relative to its size).
-        if ratio < bestRatio {
-            bestRatio = ratio
-            selectedNode = node.Name
-        }
-    }
+		// Calculate the scores for the node.
+		if node_cpu_capacity[node.Name].CPUCapacity > 0 {
+            // Compute the CPU Limit Score (including the new pod limits). Lowest score wins.
+	        node_cpu_capacity[node.Name].ScoreLimits = float64(node_cpu_capacity[node.Name].AssignedCPULimitsPlus) / float64(node_cpu_capacity[node.Name].CPUCapacity)
+		}
+	}
 
-    if selectedNode == "" {
-        return "", fmt.Errorf("no suitable node found")
-    }
-    return selectedNode, nil
+
+	// choose the node with the lowest ScoreLimits
+	// If there are multiple nodes with the same ScoreLimits, the node with the lowest ScorePods is selected.
+	// If there are multiple nodes with the same ScoreLimits and ScorePods, the first node in the list is selected.
+ 
+	bestNode = ""
+	bestScoreLimits := math.MaxFloat64
+	bestScorePods := int64(1e9)
+
+	for nodeName, info := range node_cpu_capacity {
+    	// Skip nodes that are unschedulable (CPUCapacity set to 0).
+    	if info.CPUCapacity == 0 {
+        	continue
+    	}
+    	// If this node has a lower ScoreLimits, or if ScoreLimits are equal and ScorePods is lower, choose it.
+    	if info.ScoreLimits < bestScoreLimits || (info.ScoreLimits == bestScoreLimits && info.ScorePods < bestScorePods) {
+	        bestScoreLimits = info.ScoreLimits
+    	    bestScorePods = info.ScorePods
+        	bestNode = nodeName
+    	}
+	}
+
+	if bestNode == "" {
+    	return "", fmt.Errorf("no suitable node found")
+	}
+
+	return bestNode, nil
 }
 
-
-func selectNode_basic(clientset *kubernetes.Clientset) (string, error) {
+func selectNodeBasic(clientset *kubernetes.Clientset) (string, error) {
 	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return "", err
