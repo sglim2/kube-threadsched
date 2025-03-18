@@ -45,7 +45,7 @@ func main() {
 	for {
 
 		// timestamp
-	    fmt.Printf(time.Now().Format(time.RFC850) + " Polling...\n")
+	    fmt.Printf(time.Now().Format(time.RFC822Z) + " Polling...\n")
 
 		pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
@@ -54,10 +54,12 @@ func main() {
 			continue
 		}
 
+
 		// Iterate through each pod in the cluster.
 		for _, pod := range pods.Items {
 			// Skip pods that are already scheduled or not intended for our scheduler.
 			if pod.Spec.SchedulerName != schedulerName || pod.Spec.NodeName != "" {
+				fmt.Printf(time.Now().Format(time.RFC822Z) + "Skipping pod/namespace/scheduler %s/%s/%s\n", pod.Name, pod.Namespace, pod.Spec.SchedulerName)
 				continue
 			}
 
