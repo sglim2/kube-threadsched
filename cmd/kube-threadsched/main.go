@@ -143,7 +143,6 @@ func selectNode(clientset *kubernetes.Clientset, pod *v1.Pod) (string, error) {
 	// Calculate the ratio of the total CPU limit for all containers of all the pods in the namespace, for that node.
     for _, node := range nodes.Items {
 
-
 		// Obtain the total CPU capacity from the node’s status.
 		cpuCapacityQuantity, ok := node.Status.Capacity[v1.ResourceCPU]
 		if !ok {
@@ -168,6 +167,10 @@ func selectNode(clientset *kubernetes.Clientset, pod *v1.Pod) (string, error) {
 	// Cycle through the pods in the namespace, and calculate the sum total CPU limits
 	//   for all containers of all the pods in the namespace, append to each node.
 	for _, pod := range pods_namespaced.Items {
+		// Only consider pods that have been scheduled (i.e. NodeName is non-empty)
+    	if pod.Spec.NodeName == "" {
+        	continue
+	    }
 		// Cycle through the containers in the pod, and sum the CPU limits.
 		for _, container := range pod.Spec.Containers {
 			if limit, ok := container.Resources.Limits[v1.ResourceCPU]; ok {
@@ -181,22 +184,23 @@ func selectNode(clientset *kubernetes.Clientset, pod *v1.Pod) (string, error) {
 		node_cpu_capacity[pod.Spec.NodeName].ScorePods += 1
 	}
 
-
-	// Add the CPU limit of the new pod to the map
+    // Add the new pod's CPU limits and requests to each node candidate.
 	for _, node := range nodes.Items {
-		node_cpu_capacity[pod.Spec.NodeName].AssignedCPULimitsPlus = node_cpu_capacity[pod.Spec.NodeName].AssignedCPULimits
-		for _, container := range pod.Spec.Containers {
-			if limit, ok := container.Resources.Limits[v1.ResourceCPU]; ok {
-	 			node_cpu_capacity[node.Name].AssignedCPULimitsPlus += limit.Value()
-			}
-		}
-		node_cpu_capacity[pod.Spec.NodeName].AssignedCPURequestsPlus = node_cpu_capacity[pod.Spec.NodeName].AssignedCPURequests
+        info := node_cpu_capacity[node.Name]
+        // Start with the current values.
+   		info.AssignedCPULimitsPlus = info.AssignedCPULimits
+        info.AssignedCPURequestsPlus = info.AssignedCPURequests
+    
+        // For each container in the new pod, add its CPU limit/request.
         for _, container := range pod.Spec.Containers {
-			if request, ok := container.Resources.Requests[v1.ResourceCPU]; ok {
-	 			node_cpu_capacity[node.Name].AssignedCPURequestsPlus += request.Value()
-			}
-		}
-	}
+            if limit, ok := container.Resources.Limits[v1.ResourceCPU]; ok {
+                info.AssignedCPULimitsPlus += limit.Value()
+            }
+            if request, ok := container.Resources.Requests[v1.ResourceCPU]; ok {
+                info.AssignedCPURequestsPlus += request.Value()
+            }
+        }
+    }
 
 	// Calculate the score for each Node
 	for _, node := range nodes.Items {
