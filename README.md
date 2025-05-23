@@ -1,5 +1,5 @@
 # namespacedThreadSpread-scheduler
-A custom Kubernetes scheduler written in Go that schedules pods based on the CPU limits of pods within the same namespace relative to each node’s CPU capacity. This scheduler is designed to evenly spread pods (by their defined CPU limits) across nodes, even in clusters with heterogeneous node capacities.
+A custom Kubernetes scheduler written in Go that schedules pods based on the CPU limits of pods within the same namespace relative to each node’s CPU capacity. This scheduler is designed to evenly spread pods (by their defined CPU limits) across nodes, even in clusters with heterogeneous node capacities (in fact, only really useful for cluster with varying amounts of cpu across cluster worker nodes).
 
 ## Overview
 In many environments, especially when pods in one namespace are expected to run simultaneously while others are idle, it’s important to distribute workloads evenly. This scheduler selects a node for a pod by computing a ratio:
