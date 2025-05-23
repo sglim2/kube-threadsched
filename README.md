@@ -18,7 +18,7 @@ The scheduler continuously polls the api-server for pods that are pending and ha
    * Computes a ratio (score) based on the CPU limit and the node's total cpu.
    * Selects the node with the best score. If two nodes have the same score, the node with fewer pods is chosen.
 
-## Testng
+## Testing
 
 ```
 for i in `seq 1 50`
