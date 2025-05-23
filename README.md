@@ -1,4 +1,4 @@
-# dragonfly-namespacedThreadSpread-scheduler
+# namespacedThreadSpread-scheduler
 A custom Kubernetes scheduler written in Go that schedules pods based on the CPU limits of pods within the same namespace relative to each node’s CPU capacity. This scheduler is designed to evenly spread pods (by their defined CPU limits) across nodes, even in clusters with heterogeneous node capacities.
 
 ## Overview
@@ -13,7 +13,7 @@ The scheduler only considers pods in the same namespace and ensures that a node 
 ## How It Works
 
  1. Polling:
-The scheduler continuously polls the Kubernetes API for pods that are pending scheduling and have their spec.schedulerName set to dragonfly-namespacedThreadSpread-scheduler.
+The scheduler continuously polls the Kubernetes API for pods that are pending scheduling and have their spec.schedulerName set to namespacedThreadSpread-scheduler.
  2. Node Selection:
 For each pod, the scheduler:
    * Lists all nodes and retrieves their CPU capacity from node.Status.Capacity.
@@ -31,7 +31,7 @@ Detailed logs provide visibility into the scheduling decision process, including
 ```
 for i in `seq 1 50`
 do 
-  kubectl run rocky$i  --image=rockylinux/rockylinux:latest --overrides='{"spec": {"schedulerName": "dragonfly-namespacedThreadSpread-scheduler", "containers": [{"name": "rocky", "image": "rockylinux/rockylinux:latest", "args": ["bash", "-c", "sleep infinity"], "resources": {"requests": {"cpu": "1"}, "limits": {"cpu": "8"}}}]}}' --override-type merge
+  kubectl run rocky$i  --image=rockylinux/rockylinux:latest --overrides='{"spec": {"schedulerName": "namespacedThreadSpread-scheduler", "containers": [{"name": "rocky", "image": "rockylinux/rockylinux:latest", "args": ["bash", "-c", "sleep infinity"], "resources": {"requests": {"cpu": "1"}, "limits": {"cpu": "8"}}}]}}' --override-type merge
 done 
 ```
 
